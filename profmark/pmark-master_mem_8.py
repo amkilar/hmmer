@@ -67,7 +67,7 @@ with open('{0}.sh'.format(resultdir), 'w') as f:
 
     f.write('#!/bin/bash\n')
     f.write('#SBATCH -t 6-00:00\n')   # 6 days
-    f.write('#SBATCH --mem 4000\n')
+    f.write('#SBATCH --mem 8000\n')
     f.write('#SBATCH -p eddy\n')
     f.write('#SBATCH -c 1\n')         # 1 core
     f.write('#SBATCH -N 1\n')         # 1 node
