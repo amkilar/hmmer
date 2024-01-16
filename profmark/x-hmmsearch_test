@@ -43,13 +43,15 @@ import psutil
 import time
 
 
-
-def get_memory_info():
+# The function returns rss and vms memory in Mb (>> 30 = Gb); without bytes
+def get_memory_info(process):
+    memory = process.memory_info()
     return {
-        "total_memory": psutil.virtual_memory().total / (1024.0 ** 3),
-        "available_memory": psutil.virtual_memory().available / (1024.0 ** 3),
-        "used_memory": psutil.virtual_memory().used / (1024.0 ** 3),
-        "memory_percentage": psutil.virtual_memory().percent
+        #"total_memory": memory.total / (1024.0 ** 2),
+        #"available_memory": memory.available / (1024.0 ** 2),
+        "rss": memory.rss >> 20,
+        "vms": memory.vms >> 20
+        #"memory_percentage": memory.percent
     }
 
 
@@ -99,37 +101,38 @@ for line in tblfp:
     r = subprocess.run(cmd.split(), capture_output=True, encoding='utf-8')
     if r.returncode: sys.exit('FAILED: {}\n{}'.format(cmd, r.stderr))
 
+    ###
 
-    #usage_start = resource.getrusage(resource.RUSAGE_CHILDREN) # start measuring resources
-    #cmd = '{0} {1} --tblout {2}/{3}.tmp {2}/{3}.hmm {4}'.format(hmmsearch, searchopts, resultdir, msaname, fafile)
-    #r = subprocess.run(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, encoding='utf-8')
-    #if r.returncode: sys.exit('FAILED: {}\n{}'.format(cmd, r.stderr))
-    #usage_end = resource.getrusage(resource.RUSAGE_CHILDREN) # end measuring resources
-
-    #process = psutil.Process()
-    #przed = process.memory_info().rss
-
+    # Start measuring time for memory usage
     SLICE_IN_SECONDS = 1
+
     usage_start = resource.getrusage(resource.RUSAGE_CHILDREN)
     cmd = '{0} {1} --tblout {2}/{3}.tmp {2}/{3}.hmm {4}'.format(hmmsearch, searchopts, resultdir, msaname, fafile)
     r = subprocess.Popen(cmd.split(), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, encoding='utf-8')
 
+    process = psutil.Process(r.pid)
+
     resultTable = []
     while r.poll() == None:
-        resultTable.append(get_memory_info())
+        resultTable.append(get_memory_info(process))
         time.sleep(SLICE_IN_SECONDS)
+
+
+    memory_rss = max([m['rss'] for m in resultTable])
+    memory_vms = max([n['vms'] for n in resultTable])
+
 
     if r.returncode: sys.exit('FAILED: {}\n{}'.format(cmd, r.stderr))
 
+    # Stop measuring time
     usage_end = resource.getrusage(resource.RUSAGE_CHILDREN) # end measuring resources
 
-    memory = [m['used_memory'] for m in resultTable]
-
+    # Calculate time elapsed per hmmsearch process
     cpu_time_user = usage_end.ru_utime - usage_start.ru_utime
     cpu_time_system = usage_end.ru_stime - usage_start.ru_stime
 
-
-    outrepfp.write('{0} {1} {2} {3}\n'.format(msaname, cpu_time_user, cpu_time_system, memory))  # write to the file
+    # Write time and memory usage to the file
+    outrepfp.write('{0} {1:.2f} {2:.2f} {3} {4} \n'.format(msaname, cpu_time_user, cpu_time_system, memory_rss, memory_vms))
 
     ###
 
