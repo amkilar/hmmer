@@ -113,7 +113,7 @@ if not outfp:    sys.exit("failed to open outfile {} for writing".format(outfile
 if not domoutfp: sys.exit("failed to open domoutfile {} for writing".format(domoutfile))
 
 ### Agata's additions
-tbl_rep_file=outfile.replace(".out", "") + "_report.out"
+tbl_rep_file=outfile.replace(".out", ".report")
 outrepfp = open(tbl_rep_file, "w");
 if not outrepfp: sys.exit("failed to open outfile_report {} for writing".format(tbl_rep_file))
 ###
