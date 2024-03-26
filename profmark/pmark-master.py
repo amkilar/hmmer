@@ -14,7 +14,8 @@ tblfile = benchmark_pfx + '.tbl'
 msafile = benchmark_pfx + '.train.msa'
 fafile  = benchmark_pfx + '.test.fa'
 
-if     os.path.exists(resultdir):        sys.exit('results directory {} already exists'.format(resultdir))
+
+#if     os.path.exists(resultdir):        sys.exit('results directory {} already exists'.format(resultdir))
 if not os.path.isdir(top_builddir):      sys.exit("didn't find top_builddir at {}".format(top_builddir))
 if not os.path.isdir(top_srcdir):        sys.exit("didn't find top_srcdir at {}".format(top_srcdir))
 if not os.path.isfile(tblfile):          sys.exit('pmark tbl file {} not found'.format(tblfile))
@@ -23,7 +24,7 @@ if not os.path.isfile(msafile + '.ssi'): sys.exit("msafile {} needs to have an S
 if not os.path.isfile(fafile):           sys.exit('pmark test sequence FASTA file {} not found'.format(fafile))
 if not os.access(pmark_script, os.X_OK): sys.exit('driver script {} not found or not executable'.format(pmark_script))
 
-os.mkdir(resultdir)
+#os.mkdir(resultdir)
 ncpu = int(ncpu)
 
 # Read the master table, for MSAs with successful splits

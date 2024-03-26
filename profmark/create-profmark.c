@@ -82,7 +82,7 @@ static ESL_OPTIONS options[] = {
   { "--mintrain",   eslARG_INT,      "10", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of training domains required per input MSA", 2 },
   { "--mintest",    eslARG_INT,       "2", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of test domains required per input MSA",     2 }, 
   { "--maxtrain",   eslARG_INT,     FALSE, NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of training domains taken per input MSA",    2 },
-  { "--maxtest",    eslARG_INT,      "10", NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of test domains taken per input MSA",        2 },
+  { "--maxtest",    eslARG_INT,     FALSE, NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of test domains taken per input MSA",        2 },
   { "--double",     eslARG_NONE,    FALSE, NULL,      NULL,      NULL, NULL, NULL,  "embed two, not one domain in each positive",                2 },
 
   /* Options controlling choice of method for splitting into testing and training sets  */
