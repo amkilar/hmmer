@@ -94,8 +94,6 @@ domoutfile    = outfile+".dom"
 
 hmmbuild    = '{}/src/hmmbuild'.format(top_builddir)
 ehmmsearch   = '{}/src/ehmmsearch'.format(top_builddir)
-<<<<<<< HEAD
-
 
 # Fill in options
 buildopts   = "parameter_buildopts"
@@ -159,7 +157,6 @@ for line in tblfp:
     if r.returncode: sys.exit('FAILED: {}\n{}'.format(cmd, r.stderr))
 
 
-<<<<<<< HEAD
     # Capture the hmmer output
     outhmm = '{0}/{1}'.format(resultdir, msaname)
     #if args.max: outfile += '.max'                     ## Here Elena is adding extensions to the output file based on applied parameters   
