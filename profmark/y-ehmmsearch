@@ -68,12 +68,14 @@ parser.add_argument('fafile',      type=str, help='the benchmark\'s positive and
 parser.add_argument('outfile',     type=str, help='a whitespace-delimited tabular output file, one line per target sequence, described below.') 
 
 # options
-#parser.add_argument('--enone',   action="store_true", default=None, help='hmmbuild --enone')
-#parser.add_argument('--max',     action="store_true", default=None, help='hmmsearch --max')
-#parser.add_argument('--verbose', action="store_true", default=None, help='does not remove intermediate files')
-#parser.add_argument('--F1',      type=float, required=False, help='hmmsearch --F1')
-#parser.add_argument('--F2',      type=float, required=False, help='hmmsearch --F2')
-#parser.add_argument('--F3',      type=float, required=False, help='hmmsearch --F3')
+#parser.add_argument('--enone',       action="store_true", default=None, help='hmmbuild --enone')
+#parser.add_argument('--max',         action="store_true", default=None, help='hmmsearch --max')
+#parser.add_argument('--noevo',       action="store_true", default=None, help='hmmsearch --noevo')
+#parser.add_argument('--recalibrate', action="store_true", default=None, help='hmmsearch --recalibrate')
+#parser.add_argument('--verbose',     action="store_true", default=None, help='does not remove intermediate files')
+#parser.add_argument('--F1',          type=float, required=False, help='hmmsearch --F1')
+#parser.add_argument('--F2',          type=float, required=False, help='hmmsearch --F2')
+#parser.add_argument('--F3',          type=float, required=False, help='hmmsearch --F3')
 
 
 args = parser.parse_args()
@@ -92,6 +94,7 @@ domoutfile    = outfile+".dom"
 
 hmmbuild    = '{}/src/hmmbuild'.format(top_builddir)
 ehmmsearch   = '{}/src/ehmmsearch'.format(top_builddir)
+<<<<<<< HEAD
 
 
 # Fill in options
@@ -106,6 +109,8 @@ verbose = "parameter_verbose"
 #if args.F1:  searchopts += '--F1 {} '.format(args.F1)
 #if args.F2:  searchopts += '--F2 {} '.format(args.F2)
 #if args.F3:  searchopts += '--F3 {} '.format(args.F3)
+#if args.noevo:       searchopts += '--noevo '
+#if args.recalibrate: searchopts += '--recalibrate '
 
 
 if not os.path.isdir(top_builddir):  sys.exit("didn't find top_builddir at {}".format(top_builddir))
@@ -116,7 +121,6 @@ if not os.path.isfile(msafile):      sys.exit("didn't find msafile at {}".format
 if not os.path.isfile(fafile):       sys.exit("didn't find fafile at {}".format(fafile))
 if not os.access(hmmbuild, os.X_OK): sys.exit("didn't find executable hmmbuild at {}".format(hmmbuild))
 if not os.access(ehmmsearch,os.X_OK): sys.exit("didn't find executable ehmmsearch at {}".format(ehmmsearch))
-
 if not os.path.isfile('{}.ssi'.format(msafile)): sys.exit("msafile {} needs to have an SSI index.\nRun esl-afetch --index on it to create one.".format(msafile))
 
 tblfp    = open(tblfile)
@@ -155,13 +159,16 @@ for line in tblfp:
     if r.returncode: sys.exit('FAILED: {}\n{}'.format(cmd, r.stderr))
 
 
+<<<<<<< HEAD
     # Capture the hmmer output
     outhmm = '{0}/{1}'.format(resultdir, msaname)
     #if args.max: outfile += '.max'                     ## Here Elena is adding extensions to the output file based on applied parameters   
     #if args.F1:  outfile += '.F1.{}'.format(args.F1)
     #if args.F2:  outfile += '.F2.{}'.format(args.F2)
     #if args.F3:  outfile += '.F3.{}'.format(args.F3)
-    outhmm += '.hmmer'
+    #if args.noevo:       outfile += '.noevo'
+    #if args.recalibrate: outfile += '.recalibrate'
+    outhmm += '.ehmmer'
     f = open(outhmm, "w")
 
     ###
