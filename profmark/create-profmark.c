@@ -910,24 +910,68 @@ set_random_segment(const PM_CONFIG *cfg, FILE *logfp, int W, ESL_DSQ *dsqp)
 
 
 static void
-set_homologous_segment(FILE *logfp, const ESL_MSA *msa, int idx, ESL_DSQ *dsqp)
+set_homologous_segment(FILE *logfp, const ESL_MSA *msa, int idx, ESL_DSQ *dsqp, int fragment_index)
 {
   int apos;
   int rlen = 0;
+  int start, end;
+  int frag_len;
+  int frag_25, frag_50, frag_75, frag_100;
+  char fragment_sqname[40];
 
+  // Calculate the full non-gap length of the sequence
   for (apos = 1; msa->ax[idx][apos] != eslDSQ_SENTINEL; apos++)
     if (! esl_abc_XIsGap(msa->abc, msa->ax[idx][apos]))
-      {
-        *dsqp++ = msa->ax[idx][apos];
         rlen++;
+
+
+  // Calculate fragment lengths
+  frag_25 = rlen * 0.25;
+  frag_50 = rlen * 0.50;
+  frag_75 = rlen * 0.75;
+  frag_100 = rlen;
+
+  // Generate three random fragments of 25%, 50%, and 75% of the domain and one full
+  //for (int i = 0; i < 4; i++)
+  //{
+    // Reset the dsqp pointer to the start for each fragment
+    ESL_DSQ *frag_dsqp = dsqp;
+
+    // Determine the fragment length based on the iteration
+    //switch (i)
+    switch (fragment_index)
+    {
+      case 0: frag_len = frag_25; break;
+      case 1: frag_len = frag_50; break;
+      case 2: frag_len = frag_75; break;
+      case 3: frag_len = frag_100; break;
+    }
+
+    // Generate a random start position for the fragment
+    start = rand() % (rlen - frag_len + 1) + 1; // +1 because apos starts at 1
+
+    // Copy the fragment to the new sequence
+    for (apos = 1, end = 0; msa->ax[idx][apos] != eslDSQ_SENTINEL && end < frag_len; apos++)
+    {
+      if (!esl_abc_XIsGap(msa->abc, msa->ax[idx][apos]))
+      {
+        if (end >= start && end < start + frag_len)
+        {
+          *frag_dsqp++ = msa->ax[idx][apos];
+        }
+        end++;
       }
+    }    
 
-  if (logfp)
-    fprintf(logfp, " %-32s %6d %6d %6d .", msa->sqname[idx], rlen, 1, rlen);
+    // Log the fragment information
+    if (logfp)
+      // Create a new string with the sequence name and new coordinates
+      sprintf(fragment_sqname, "%s/%d-%d", msa->sqname[idx], start, start + frag_len - 1);
+      fprintf(logfp, " %-32s %6d %6d %6d .", fragment_sqname, frag_len, start, start + frag_len - 1);
 
-  // all embedded segments are full length, so "<rlen> 1 <rlen>" output is redundant
-  // but in future, we might embed partial length homologous segments,
-  // to test local alignment
+    // Move the dsqp pointer to the next sequence start position
+    dsqp += frag_len;
+  //}
 }
 
 
@@ -962,9 +1006,9 @@ synthesize_twodom_positives(const PM_CONFIG *cfg, const ESL_MSA *msa, const int 
   
       fprintf(cfg->out_postbl, "%-40s %5d %5d %5d %5d %5d %5d", sq->name, (int) sq->n, L1, d1n, L2, d2n, L3);
       set_random_segment    (cfg, cfg->out_postbl, L1,          sq->dsq+1);
-      set_homologous_segment(     cfg->out_postbl, msa, T[i],   sq->dsq+1+L1);
+      set_homologous_segment(     cfg->out_postbl, msa, T[i],   sq->dsq+1+L1, 3); //3 corresponds to frag_100 (full domain - fragment = 100%)
       set_random_segment    (cfg, cfg->out_postbl, L2,          sq->dsq+1+L1+d1n);
-      set_homologous_segment(     cfg->out_postbl, msa, T[i+1], sq->dsq+1+L1+d1n+L2);
+      set_homologous_segment(     cfg->out_postbl, msa, T[i+1], sq->dsq+1+L1+d1n+L2, 3); //3 corresponds to frag_100 (full domain - fragment = 100%)
       set_random_segment    (cfg, cfg->out_postbl, L3,          sq->dsq+1+L1+d1n+L2+d2n);
       fprintf(cfg->out_postbl, "\n");
 
@@ -1063,23 +1107,47 @@ synthesize_onedom_positives(const PM_CONFIG *cfg, const ESL_MSA *msa, const int 
       embed_one(cfg->rng, L, d1n, &L1, &L2);
       esl_sq_GrowTo(sq, L);
 
+    for (int fragment_index = 0; fragment_index < 4; fragment_index++)   // <---- my modification
+    {
       (*tot_npos)++;
-      esl_sq_FormatName(sq, "%s/%d/%d-%d",  msa->name, *tot_npos, L1+1, L1+d1n);
+      
+      // Determine the fragment length based on the iteration
+      switch (fragment_index)
+      {
+        case 0: d1n = esl_dsq_GetRawLen(msa->abc, msa->ax[T[i]]) * 0.25; break;
+        case 1: d1n = esl_dsq_GetRawLen(msa->abc, msa->ax[T[i]]) * 0.50; break;
+        case 2: d1n = esl_dsq_GetRawLen(msa->abc, msa->ax[T[i]]) * 0.75; break;
+        case 3: d1n = esl_dsq_GetRawLen(msa->abc, msa->ax[T[i]]); break;
+      }
+
+      // Generate a random start position for the fragment
+      int start = rand() % (L - d1n + 1) + 1; // +1 because apos starts at 1
+
+      // Calculate the position of the true domain in the full positive test sequence
+      int true_start = L1 + 1;
+      int true_end = true_start + d1n - 1;
+
+      // Update the total length of the positive test sequence
+      L = L1 + d1n + L2;
+
+      esl_sq_FormatName(sq, "%s/%d/%d-%d",  msa->name, *tot_npos, true_start, true_end);
       esl_sq_FormatDesc(sq, "domain: %s",   msa->sqname[T[i]]);
       sq->n = L;
       sq->dsq[0] = sq->dsq[L+1] = eslDSQ_SENTINEL;
-  
+
       fprintf(cfg->out_postbl, "%-40s %5d %5d %5d %5d", sq->name, (int) sq->n, L1, d1n, L2);
       set_random_segment    (cfg, cfg->out_postbl, L1,          sq->dsq+1);
-      set_homologous_segment(     cfg->out_postbl, msa, T[i],   sq->dsq+1+L1);
+      set_homologous_segment(cfg->out_postbl, msa, T[i], sq->dsq+1+L1, fragment_index);  // <---- my modification
       set_random_segment    (cfg, cfg->out_postbl, L2,          sq->dsq+1+L1+d1n);
       fprintf(cfg->out_postbl, "\n");
 
       esl_sqio_Write(cfg->out_test, sq, eslSQFILE_FASTA, FALSE);
-#if eslDEBUGLEVEL >= 1
-      if ( esl_sq_Validate(sq, errbuf) != eslOK) esl_fatal(errbuf);  
-#endif
+      #if eslDEBUGLEVEL >= 1
+        if ( esl_sq_Validate(sq, errbuf) != eslOK) esl_fatal(errbuf);  
+      #endif
       esl_sq_Reuse(sq);
+    }
+      
     }
   esl_sq_Destroy(sq);
 }
