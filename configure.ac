@@ -196,6 +196,7 @@ esac
 AC_ARG_ENABLE(gcov,    [AS_HELP_STRING([--enable-gcov],    [compile for code coverage testing])],        enable_gcov=$enableval,    enable_gcov=no)
 AC_ARG_ENABLE(gprof,   [AS_HELP_STRING([--enable-gprof],   [compile for gcc code profiling])],           enable_gprof=$enableval,   enable_gprof=no)
 AC_ARG_ENABLE(asan,    [AS_HELP_STRING([--enable-asan],    [compile with address sanitizer]) ],          enable_asan=$enableval,    enable_asan=no)
+AC_ARG_ENABLE(msan,    [AS_HELP_STRING([--enable-msan],    [compile with memory sanitizer]) ],           enable_msan=$enableval,    enable_msan=no)
 AC_ARG_ENABLE(tsan,    [AS_HELP_STRING([--enable-tsan],    [compile with thread sanitizer]) ],           enable_tsan=$enableval,    enable_tsan=no)
 AC_ARG_ENABLE(fortify, [AS_HELP_STRING([--enable-fortify=x],[compile with -D_FORTIFY_SOURCE=x]) ],       enable_fortify=$enableval, enable_fortify=no)
 
@@ -219,7 +220,6 @@ vecsel=0
 if test "$enable_neon"    = "yes"; then vecsel=$((vecsel+1)); fi
 if test "$enable_sse"     = "yes"; then vecsel=$((vecsel+1)); fi
 if test "$enable_vmx"     = "yes"; then vecsel=$((vecsel+1)); fi
-if test "$enable_neon"    = "yes"; then vecsel=             ; fi
 if   [[ $vecsel -gt 1 ]]; then
   AC_MSG_ERROR([Select only one implementation: sse, neon,  or vmx])
 elif [[ $vecsel -eq 1 ]]; then
@@ -309,6 +309,15 @@ if test "$enable_tsan" = "yes"; then
   LDFLAGS="$LDFLAGS -fsanitize=thread"
   AC_DEFINE(eslENABLE_TSAN, 1, [Using threads sanitizer])
 fi
+if test "$enable_msan" = "yes"; then
+  if test "$enable_asan" = "yes" || test "$enable_tsan" = "yes"; then  
+    AC_MSG_FAILURE([Only one sanitizer at a time. Use only one of --enable-{asan,msan,tsan}])
+  fi
+  CFLAGS="$CFLAGS -fsanitize=memory -fsanitize-memory-track-origins -fPIE -pie"
+  LDFLAGS="$LDFLAGS -fsanitize=memory -fsanitize-memory-track-origins -fPIE -pie"
+  AC_DEFINE(eslENABLE_MSAN, 1, [Using memory sanitizer])
+fi
+
 
 
 # PIC (position-independent code) for shared library support
@@ -703,6 +712,7 @@ AC_CONFIG_FILES([ \
 AC_CONFIG_FILES([ \
   documentation/userguide/titlepage.tex  \
   documentation/userguide/titlepage_daemon.tex  \
+  documentation/userguide/titlepage_server.tex  \
   documentation/userguide/copyright.tex  \
   ])
 
@@ -713,6 +723,7 @@ AC_CONFIG_FILES([ \
   documentation/man/hmmalign.man    \
   documentation/man/hmmbuild.man    \
   documentation/man/hmmc2.man       \
+  documentation/man/hmmclient.man       \
   documentation/man/hmmconvert.man  \
   documentation/man/hmmemit.man     \
   documentation/man/hmmer.man       \
@@ -723,10 +734,10 @@ AC_CONFIG_FILES([ \
   documentation/man/hmmpress.man    \
   documentation/man/hmmscan.man     \
   documentation/man/hmmsearch.man   \
+  documentation/man/hmmserver.man   \
   documentation/man/hmmsim.man      \
   documentation/man/hmmstat.man     \
   documentation/man/jackhmmer.man   \
-  documentation/man/makehmmerdb.man \
   documentation/man/nhmmer.man      \
   documentation/man/nhmmscan.man    \
   documentation/man/phmmer.man      \
@@ -756,8 +767,8 @@ AC_CONFIG_FILES([ \
   easel/miniapps/esl-sfetch.man      \
   easel/miniapps/esl-shuffle.man     \
   easel/miniapps/esl-ssdraw.man      \
-  easel/miniapps/esl-translate.man   \
   easel/miniapps/esl-weight.man      \
+  easel/miniapps/easel-translate.man \
  ])
 
 AC_CONFIG_HEADERS([easel/decoy_config.h])   # Put this first to keep gnu 'autoheader' from overwriting a real config file.

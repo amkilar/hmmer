@@ -193,6 +193,8 @@ p7_tophits_CreateNextHit(P7_TOPHITS *h, P7_HIT **ret_hit)
   hit->lnP          = 0.0;
   hit->pre_lnP      = 0.0;
   hit->sum_lnP      = 0.0;
+  
+  hit->time         = -1.0;
 
   hit->ndom         = 0;
   hit->nexpected    = 0.0;
@@ -285,6 +287,7 @@ p7_tophits_Add(P7_TOPHITS *h,
   h->unsrt[h->N].lnP        = lnP;
   h->unsrt[h->N].pre_lnP    = 0.0;
   h->unsrt[h->N].sum_lnP    = 0.0;
+  h->unsrt[h->N].time       = -1.0;
   h->unsrt[h->N].nexpected  = 0;
   h->unsrt[h->N].nregions   = 0;
   h->unsrt[h->N].nclustered = 0;
@@ -988,7 +991,7 @@ p7_tophits_Threshold(P7_TOPHITS *th, P7_PIPELINE *pli)
   }
 
   /* Count the reported, included domains */
-  for (h = 0; h < th->N; h++) {
+  for (h = 0; h < th->N; h++){
     th->hit[h]->nreported = 0;
     th->hit[h]->nincluded = 0;
     for (d = 0; d < th->hit[h]->ndom; d++)
@@ -997,7 +1000,6 @@ p7_tophits_Threshold(P7_TOPHITS *th, P7_PIPELINE *pli)
         if (th->hit[h]->dcl[d].is_included) th->hit[h]->nincluded++;
     }
   }
-
   workaround_bug_h74(th);  /* blech. This function is defined above; see commentary and crossreferences there. */
 
   return eslOK;
@@ -1133,7 +1135,7 @@ p7_tophits_Targets(FILE *ofp, P7_TOPHITS *th, P7_PIPELINE *pli, int textw)
   if (pli->show_accessions) namew = ESL_MAX(8, p7_tophits_GetMaxShownLength(th));
   else                      namew = ESL_MAX(8, p7_tophits_GetMaxNameLength(th));
 
-
+  
   if (pli->long_targets) 
   {
       posw = ESL_MAX(6, p7_tophits_GetMaxPositionLength(th));

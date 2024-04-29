@@ -65,7 +65,13 @@ PROGS = alimask\
 	phmmer\
 	nhmmer\
 	nhmmscan\
-	makehmmerdb
+	hmmer-makefmdb\
+	ehmmsearch\
+	#ehmmscan\
+	ehmmemit\
+	ejackhmmer\
+	ephmmer\
+	ehmmbuild\
 
 # "auxprogs" are built but not installed.
 AUXPROGS = \
@@ -90,7 +96,12 @@ PROGOBJS =\
 	phmmer.o\
 	nhmmer.o\
 	nhmmscan.o\
-	makehmmerdb.o
+	hmmer-makefmdb.o\
+	ehmmsearch.o\
+	#ehmmemit.o\
+	ehmmscan.o\
+	ejackhmmer.o\
+	ephmmer.o\
 
 AUXPROGOBJS = \
 	hmmc2.o \
@@ -101,7 +112,21 @@ HDRS =  hmmer.h \
 	p7_gbands.h \
 	p7_gmxb.h \
 	p7_gmxchk.h \
-	p7_hmmcache.h
+	p7_hmmcache.h\
+	e1_model.h\
+	e1_rate.h\
+	e1_emit.h\
+	e1_goodness.h\
+	e1_simulate.h\
+	e2_profilesq.h\
+	e2.h\
+	evohmmer.h\
+	minimize.h\
+	p7_evopipeline.h\
+	p7_etophits_output_tabular.h\
+	ratematrix.h\
+	p7_hmmcache.h \
+	#evo_evalues.h\
 
 OBJS =  build.o\
 	cachedb.o\
@@ -162,7 +187,23 @@ OBJS =  build.o\
 	fm_alphabet.o\
 	fm_general.o\
 	fm_sse.o\
-	fm_ssv.o
+	fm_ssv.o\
+	e1_bg.o\
+	e1_model.o\
+	e1_rate.o\
+	e1_emit.o\
+	e1_goodness.o\
+	e1_simulate.o\
+	e2_profilesq.o\
+	evohmmer.o\
+	minimize.o\
+	p7_evopipeline.o\
+	p7_etophits_output_tabular.o\
+	ratematrix.o\
+	ratebuilder.o\
+	ratematrix.o\
+	#p7_evobuilder.o\
+	evo_evalues.o\
 #	island.o\
 
 STATS = \

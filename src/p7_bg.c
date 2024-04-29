@@ -62,7 +62,7 @@ p7_bg_Create(const ESL_ALPHABET *abc)
   ESL_ALLOC(bg->f,     sizeof(float) * abc->K);
   if ((bg->fhmm = esl_hmm_Create(abc, 2)) == NULL) goto ERROR;
 
-  if       (abc->type == eslAMINO)
+  if (abc->type == eslAMINO)
     {
       if (p7_AminoFrequencies(bg->f) != eslOK) goto ERROR;
     }
@@ -445,6 +445,7 @@ p7_bg_SetFilter(P7_BG *bg, int M, const float *compo)
 
   bg->fhmm->pi[0] = 0.999;
   bg->fhmm->pi[1] = 0.001;
+  bg->fhmm->pi[2] = 0.000;  // state 2 is the end state, and you can't start there
 
   esl_hmm_Configure(bg->fhmm, bg->f);
   return eslOK;

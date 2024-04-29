@@ -655,18 +655,18 @@ p7_pipeline_Merge(P7_PIPELINE *p1, P7_PIPELINE *p2)
   return eslOK;
 }
 
-/* Function:  p7_Pipeline()
- * Synopsis:  HMMER3's accelerated seq/profile comparison pipeline.
+
+/* Function:  p7_Pipeline_Overthruster()
+ * Synopsis:  The filters of HMMER3's accelerated seq/profile comparison pipeline.
  *
- * Purpose:   Run H3's accelerated pipeline to compare profile <om>
- *            against sequence <sq>. If a significant hit is found,
- *            information about it is added to the <hitlist>. The pipeline 
- *            accumulates beancounting information about how many comparisons
- *            flow through the pipeline while it's active.
- *            
- * Returns:   <eslOK> on success. If a significant hit is obtained,
- *            its information is added to the growing <hitlist>. 
- *            
+ * Purpose:   Run H3's comparison filters to determine if a sequence is sufficiently
+ *            similar to an HMM to justify running the third stage.
+ * 
+ * Returns:   <eslOK> if the sequence and HMM are similar enough that the   
+ *            main stage should be run.
+ *            <eslFAIL> if the sequence and HMM are not similar enough that
+ *            the main stage should be run.
+ * 
  *            <eslEINVAL> if (in a scan pipeline) we're supposed to
  *            set GA/TC/NC bit score thresholds but the model doesn't
  *            have any.
@@ -693,79 +693,154 @@ p7_pipeline_Merge(P7_PIPELINE *p1, P7_PIPELINE *p2)
  *            and handle normal errors appropriately, which we haven't 
  *            been careful enough about. [SRE H9/4]
  */
-int
-p7_Pipeline(P7_PIPELINE *pli, P7_OPROFILE *om, P7_BG *bg, const ESL_SQ *sq, const ESL_SQ *ntsq, P7_TOPHITS *hitlist)
+extern int p7_Pipeline_Overthruster(P7_PIPELINE *pli, P7_OPROFILE *om, P7_BG *bg, const ESL_SQ *sq, float *ret_fwdsc, float *ret_nullsc)
 {
-  P7_HIT          *hit     = NULL;     /* ptr to the current hit output data      */
-  float            usc, vfsc, fwdsc;   /* filter scores                           */
-  float            filtersc;           /* HMM null filter score                   */
-  float            nullsc;             /* null model score                        */
-  float            seqbias;  
-  float            seq_score;          /* the corrected per-seq bit score */
-  float            sum_score;           /* the corrected reconstruction score for the seq */
-  float            pre_score, pre2_score; /* uncorrected bit scores for seq */
-  double           P;                /* P-value of a hit */
-  double           lnP;              /* log P-value of a hit */
-  int              Ld;               /* # of residues in envelopes */
-  int              d;
-  int              status;
-  
-  if (sq->n == 0) return eslOK;    /* silently skip length 0 seqs; they'd cause us all sorts of weird problems */
-  if (sq->n > 100000) ESL_EXCEPTION(eslETYPE, "Target sequence length > 100K, over comparison pipeline limit.\n(Did you mean to use nhmmer/nhmmscan?)");
+  //P7_HIT *hit = NULL;     /* ptr to the current hit output data      */
+  float usc, vfsc, fwdsc; /* filter scores                           */
+  float filtersc;         /* HMM null filter score                   */
+  float nullsc;           /* null model score                        */
+  //float seqbias;
+  float seq_score;             /* the corrected per-seq bit score */
+  //float sum_score;             /* the corrected reconstruction score for the seq */
+  //float pre_score, pre2_score; /* uncorrected bit scores for seq */
+  double P;                    /* P-value of a hit */
+  //double lnP;                  /* log P-value of a hit */
+  //int Ld;                      /* # of residues in envelopes */
+  //int d;
+  int status;
 
-  p7_omx_GrowTo(pli->oxf, om->M, 0, sq->n);    /* expand the one-row omx if needed */
+  if (sq->n == 0)
+    return eslFAIL; /* silently skip length 0 seqs; they'd cause us all sorts of weird problems */
+  if (sq->n > 100000)
+    ESL_EXCEPTION(eslETYPE, "Target sequence length > 100K, over comparison pipeline limit.\n(Did you mean to use nhmmer/nhmmscan?)");
+
+  p7_omx_GrowTo(pli->oxf, om->M, 0, sq->n); /* expand the one-row omx if needed */
 
   /* Base null model score (we could calculate this in NewSeq(), for a scan pipeline) */
-  p7_bg_NullOne  (bg, sq->dsq, sq->n, &nullsc);
+  p7_bg_NullOne(bg, sq->dsq, sq->n, &nullsc);
 
   /* First level filter: the MSV filter, multihit with <om> */
   p7_MSVFilter(sq->dsq, sq->n, om, pli->oxf, &usc);
   seq_score = (usc - nullsc) / eslCONST_LOG2;
-  P = esl_gumbel_surv(seq_score,  om->evparam[p7_MMU],  om->evparam[p7_MLAMBDA]);
-  if (P > pli->F1) return eslOK;
+  P = esl_gumbel_surv(seq_score, om->evparam[p7_MMU], om->evparam[p7_MLAMBDA]);
+  if (P > pli->F1)
+    return eslFAIL;
   pli->n_past_msv++;
 
   /* biased composition HMM filtering */
   if (pli->do_biasfilter)
-    {
-      p7_bg_FilterScore(bg, sq->dsq, sq->n, &filtersc);
-      seq_score = (usc - filtersc) / eslCONST_LOG2;
-      P = esl_gumbel_surv(seq_score,  om->evparam[p7_MMU],  om->evparam[p7_MLAMBDA]);
-      if (P > pli->F1) return eslOK;
-    }
-  else filtersc = nullsc;
+  {
+    p7_bg_FilterScore(bg, sq->dsq, sq->n, &filtersc);
+    seq_score = (usc - filtersc) / eslCONST_LOG2;
+    P = esl_gumbel_surv(seq_score, om->evparam[p7_MMU], om->evparam[p7_MLAMBDA]);
+    if (P > pli->F1)
+      return eslFAIL;
+  }
+  else
+    filtersc = nullsc;
   pli->n_past_bias++;
 
   /* In scan mode, if it passes the MSV filter, read the rest of the profile */
   if (pli->mode == p7_SCAN_MODELS)
-    {
-      if (pli->hfp) p7_oprofile_ReadRest(pli->hfp, om);
-      p7_oprofile_ReconfigRestLength(om, sq->n);
-      if ((status = p7_pli_NewModelThresholds(pli, om)) != eslOK) return status; /* pli->errbuf has err msg set */
-    }
+  {
+    if (pli->hfp)
+      p7_oprofile_ReadRest(pli->hfp, om);
+    p7_oprofile_ReconfigRestLength(om, sq->n);
+    if ((status = p7_pli_NewModelThresholds(pli, om)) != eslOK)
+      return status; /* pli->errbuf has err msg set */
+  }
 
   /* Second level filter: ViterbiFilter(), multihit with <om> */
   if (P > pli->F2)
-    {
-      p7_ViterbiFilter(sq->dsq, sq->n, om, pli->oxf, &vfsc);  
-      seq_score = (vfsc-filtersc) / eslCONST_LOG2;
-      P  = esl_gumbel_surv(seq_score,  om->evparam[p7_VMU],  om->evparam[p7_VLAMBDA]);
-      if (P > pli->F2) return eslOK;
-    }
+  {
+    p7_ViterbiFilter(sq->dsq, sq->n, om, pli->oxf, &vfsc);
+    seq_score = (vfsc - filtersc) / eslCONST_LOG2;
+    P = esl_gumbel_surv(seq_score, om->evparam[p7_VMU], om->evparam[p7_VLAMBDA]);
+    if (P > pli->F2)
+      return eslFAIL;
+  }
   pli->n_past_vit++;
-
-
+/*  for(int npc=0; npc < bg->fhmm->M; npc++){
+    fprintf(stderr, "%f, ", bg->fhmm->pi[npc]);
+  }
+  for(int npc0 = 0; npc0< (bg->fhmm->M * (bg->fhmm->M +1)); npc0++){
+    fprintf(stderr, "%f, ",bg->fhmm->t[npc0]);
+  } 
+  for(int npc1 = 0; npc1 < (bg->fhmm->M * bg->fhmm->abc->K); npc1++){
+    fprintf(stderr, "%f, ", bg->fhmm->e[npc1]);
+  }
+  for(int npc2 = 0; npc2 < (bg->fhmm->M * bg->fhmm->abc->Kp); npc2++){
+    fprintf(stderr, "%f, ", bg->fhmm->eo[npc2]);
+  }
+  fprintf(stderr, "%f\n", bg->p1);*/
+  //fprintf(stderr, "%d \n", sq->n);
   /* Parse it with Forward and obtain its real Forward score. */
   p7_ForwardParser(sq->dsq, sq->n, om, pli->oxf, &fwdsc);
-  seq_score = (fwdsc-filtersc) / eslCONST_LOG2;
-  P = esl_exp_surv(seq_score,  om->evparam[p7_FTAU],  om->evparam[p7_FLAMBDA]);
-  if (P > pli->F3) return eslOK;
+  seq_score = (fwdsc - filtersc) / eslCONST_LOG2;
+ //fprintf(stderr, "%s, %f, %f, %f\n", sq->name, fwdsc, filtersc, nullsc);
+ //fprintf(stderr, "%f, %f\n", bg->p1, bg->omega);
+  P = esl_exp_surv(seq_score, om->evparam[p7_FTAU], om->evparam[p7_FLAMBDA]);
+  if (P > pli->F3)
+    return eslFAIL;
   pli->n_past_fwd++;
+  *ret_fwdsc = fwdsc;
+  *ret_nullsc = nullsc;
+  return eslOK; // if we get this far, we passed all the filters and should proceed to the main stage
+}
 
-  /* ok, it's for real. Now a Backwards parser pass, and hand it to domain definition workflow */
+  /* Function:  p7_Pipeline_Mainstage()
+   * Synopsis:  HMMER3's accelerated seq/profile comparison pipeline.
+   *
+   * Purpose:   Run the main stage of HMMER's accelerated comparison
+   *            pipeline to determine if a hit really has occurred  
+   *            and update the hitlist accordingly.
+   *
+   * Returns:   <eslOK> on success. If a significant hit is obtained,
+   *            its information is added to the growing <hitlist>.
+   *
+   *            <eslEINVAL> if (in a scan pipeline) we're supposed to
+   *            set GA/TC/NC bit score thresholds but the model doesn't
+   *            have any.
+   *
+   *            <eslERANGE> on numerical overflow errors in the
+   *            optimized vector implementations; particularly in
+   *            posterior decoding. I don't believe this is possible for
+   *            multihit local models, but I'm set up to catch it
+   *            anyway. We may emit a warning to the user, but cleanly
+   *            skip the problematic sequence and continue.
+   *
+   * Throws:    <eslEMEM> on allocation failure.
+   *
+   *            <eslETYPE> if <sq> is more than 100K long, which can
+   *            happen when someone uses hmmsearch/hmmscan instead of
+   *            nhmmer/nhmmscan on a genome DNA seq db.
+   *
+   * Xref:      J4/25.
+   *
+   * Note:      Error handling needs improvement. The <eslETYPE> exception
+   *            was added as a late bugfix. It really should be an <eslEINVAL>
+   *            normal error (because it's a user error). But then we need
+   *            all our p7_Pipeline() calls to check their return status
+   *            and handle normal errors appropriately, which we haven't
+   *            been careful enough about. [SRE H9/4]
+   */
+  extern int p7_Pipeline_Mainstage(P7_PIPELINE * pli, P7_OPROFILE * om, P7_BG * bg, const ESL_SQ *sq, const ESL_SQ *ntsq, P7_TOPHITS *hitlist, float fwdsc, float nullsc)
+  {
+    P7_HIT *hit = NULL;     /* ptr to the current hit output data      */                    
+    float seqbias;
+    float seq_score;             /* the corrected per-seq bit score */
+    float sum_score;             /* the corrected reconstruction score for the seq */
+    float pre_score, pre2_score; /* uncorrected bit scores for seq */
+    double P;                    /* P-value of a hit */
+    double lnP;                  /* log P-value of a hit */
+    int Ld;                      /* # of residues in envelopes */
+    int d;
+    int status;
+
+  /* Run a Backwards parser pass, and hand it to domain definition workflow */
   p7_omx_GrowTo(pli->oxb, om->M, 0, sq->n);
   p7_BackwardParser(sq->dsq, sq->n, om, pli->oxf, pli->oxb, NULL);
-
+ 
   status = p7_domaindef_ByPosteriorHeuristics(sq, ntsq, om, pli->oxf, pli->oxb, pli->fwd, pli->bck, pli->ddef, bg, FALSE, NULL, NULL, NULL);
   if (status != eslOK) ESL_FAIL(status, pli->errbuf, "domain definition workflow failure"); /* eslERANGE can happen  */
   if (pli->ddef->nregions   == 0) return eslOK; /* score passed threshold but there's no discrete domains here       */
@@ -782,7 +857,6 @@ p7_Pipeline(P7_PIPELINE *pli, P7_OPROFILE *om, P7_BG *bg, const ESL_SQ *sq, cons
   else seqbias = 0.0;
   pre_score =  (fwdsc - nullsc) / eslCONST_LOG2; 
   seq_score =  (fwdsc - (nullsc + seqbias)) / eslCONST_LOG2;
-
   
   /* Calculate the "reconstruction score": estimated
    * per-sequence score as sum of individual domains,
@@ -935,7 +1009,36 @@ p7_Pipeline(P7_PIPELINE *pli, P7_OPROFILE *om, P7_BG *bg, const ESL_SQ *sq, cons
   return eslOK;
 }
 
+/* Function:  p7_Pipeline()
+ * Synopsis:  HMMER3's accelerated seq/profile comparison pipeline.
+ *
+ * Purpose:   This function is now just a wrapper around the 
+ *            p7_pipeline_Overthruster() and 
+ *            p7_pipeline_Mainstage() calls: it first calls p7_pipeline_Overthruster(),
+ *            to run HMMER's filter stages on the sequence/HMM comparison. If the 
+ *            filters score highly enough that the main stage should be run, it
+ *            calls p7_pipeline_Mainstage for final hit/miss determination and hitlist
+ *            insertion.
+ */
+extern int p7_Pipeline(P7_PIPELINE *pli, P7_OPROFILE *om, P7_BG *bg, const ESL_SQ *sq, const ESL_SQ *ntsq, P7_TOPHITS *hitlist)
+{
+  int status;
+  float fwdsc;
+  float nullsc;
 
+  status = p7_Pipeline_Overthruster(pli, om, bg, sq, &fwdsc, &nullsc);
+  if (status == eslOK){ //run the main stage
+    return (p7_Pipeline_Mainstage(pli, om, bg, sq, ntsq, hitlist, fwdsc, nullsc));
+  }
+  if (status == eslFAIL){  /* overthruster status of eslFAIL indicates that the thruster completed 
+                              correctly, but the comparison did not score highly enough to proceed,
+                              so return a correct completion of the pipeline */
+    return eslOK;
+  }
+  else{
+    return status;
+  }
+}
 
 /* Function:  p7_pli_computeAliScores()
  * Synopsis:  Compute per-position scores for the alignment for a domain
@@ -1499,16 +1602,14 @@ p7_Pipeline_LongTarget(P7_PIPELINE *pli, P7_OPROFILE *om, P7_SCOREDATA *data,
                         const FM_DATA *fmf, const FM_DATA *fmb, FM_CFG *fm_cfg
                         )
 {
-  int              i;
-  int              status;
-  float            nullsc;   /* null model score                        */
-  float            usc;      /* msv score  */
+  float            nullsc;   // null model score
+  float            usc;      // msv score
   float            P;
-  float            bias_filtersc;
-
+  //  float            bias_filtersc;  // SRE: see comment below on TJW's non-use of this
   ESL_DSQ          *subseq;
   uint64_t         seq_start;
-
+  int              i;
+  int              status;
 
   P7_HMM_WINDOWLIST msv_windowlist;
   P7_HMM_WINDOWLIST vit_windowlist;
@@ -1527,6 +1628,13 @@ p7_Pipeline_LongTarget(P7_PIPELINE *pli, P7_OPROFILE *om, P7_SCOREDATA *data,
   ESL_ALLOC(pli_tmp->scores, sizeof(float) * om->abc->Kp * 4); //allocation of space to store scores that will be used in p7_oprofile_Update(Fwd|Vit|MSV)EmissionScores
   ESL_ALLOC(pli_tmp->fwd_emissions_arr, sizeof(float) *  om->abc->Kp * (om->M+1));
 
+  memset(pli_tmp->fwd_emissions_arr, 0, sizeof(float) *  om->abc->Kp * (om->M+1));
+  // ^^ note on why the memset() is there:
+  // p7_oprofile_GetFwdEmissionsScoreArray() appears problematic.
+  // iss #320 detected use of uninitialized memory and I'm not surprised; probably not the only thing wrong.
+  // the memset() above is added to patch iss #320, but I expect other more subtle problems. See note on the function.
+  // [SRE 2024/0107-h3-iss320]
+
   msv_windowlist.windows = NULL;
   vit_windowlist.windows = NULL;
   p7_hmmwindow_init(&msv_windowlist);
@@ -1544,7 +1652,7 @@ p7_Pipeline_LongTarget(P7_PIPELINE *pli, P7_OPROFILE *om, P7_SCOREDATA *data,
    * short high-scoring regions.
    */
   if (fmf) // using an FM-index
-    p7_SSVFM_longlarget(om, 2.0, bg, pli->F1, fmf, fmb, fm_cfg, data, pli->strands, pli->r, &msv_windowlist );
+    p7_SSVFM_longlarget(om, 2.0, bg, pli->F1, fmf, fmb, fm_cfg, data, pli->strands, pli->r, &msv_windowlist );   // SRE: ** _longlarget ** ????
   else // compare directly to sequence
     p7_SSVFilter_longtarget(sq->dsq, sq->n, om, pli->oxf, data, bg, pli->F1, &msv_windowlist);
 
@@ -1632,7 +1740,18 @@ p7_Pipeline_LongTarget(P7_PIPELINE *pli, P7_OPROFILE *om, P7_SCOREDATA *data,
       p7_bg_SetLength(bg, window->length);
       p7_bg_NullOne  (bg, subseq, window->length, &nullsc);
 
-      p7_bg_FilterScore(bg, subseq, window->length, &bias_filtersc);
+      /* SRE: Unclear what TJW's intent here is.
+       * He was calling p7_bg_FilterScore() without checking pli->do_biasfilter,
+       * which is a bug: p7_pli_NewModel only initializes the filter HMM when
+       * pli->do_biasfilter is TRUE, so memory sanitizers will see uninitialized
+       * memory being used. But he doesn't use bias_filtersc for anything,
+       * so it's a no-op anyway. I'm going to:
+       *    1. fix the code by checking for pli->do_biasfilter
+       *    2. then comment it out because he isn't using the result anyway.
+       */
+      // if (pli->do_biasfilter)
+      //   p7_bg_FilterScore(bg, subseq, window->length, &bias_filtersc);
+
       // Compute standard MSV to ensure that bias doesn't overcome SSV score when MSV
       // would have survived it
       p7_oprofile_ReconfigMSVLength(om, window->length);

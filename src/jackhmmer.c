@@ -533,6 +533,9 @@ serial_master(ESL_GETOPTS *go, struct cfg_s *cfg)
     }
 #endif
 
+  if(ncpus < 0){ //Check to silence GCC warning, even though getopts checks that ncpus <=0
+    ncpus=1;
+  }
   infocnt = (ncpus == 0) ? 1 : ncpus;
   ESL_ALLOC(info, (ptrdiff_t) sizeof(*info) * infocnt);
 
@@ -611,15 +614,15 @@ serial_master(ESL_GETOPTS *go, struct cfg_s *cfg)
 
 	      if (fprintf(ofp, "@@\n")                                               < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");  
 	      if (fprintf(ofp, "@@ Round:                  %d\n", iteration)         < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");
-		  if (fprintf(ofp, "@@ Included in MSA:        %d subsequences (query + %d subseqs from %d targets)\n",
-		      msa->nseq, msa->nseq-1, kh->nkeys)                             < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");
+              if (fprintf(ofp, "@@ Included in MSA:        %d subsequences (query + %d subseqs from %d targets)\n",
+                          msa->nseq, msa->nseq-1, kh->nkeys)                         < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");
 	      if (fprintf(ofp, "@@ Model size:             %d positions\n", om->M)   < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");
 	      if (fprintf(ofp, "@@\n\n")                                             < 0) ESL_EXCEPTION_SYS(eslEWRITE, "write failed");
 
 	      prv_msa_nseq = msa->nseq;
 	      esl_msa_Destroy(msa);
 	    }
-
+    //fprintf(stderr, "Round %d:", iteration);
 	  /* HMM checkpoint output */
 	  if (esl_opt_IsOn(go, "--chkhmm")) {
 	    checkpoint_hmm(nquery, hmm, esl_opt_GetString(go, "--chkhmm"), iteration);
