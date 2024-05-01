@@ -29,6 +29,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "icecream.h"
 #include "easel.h"
 #include "esl_alphabet.h"
 #include "esl_cluster.h"
@@ -74,15 +75,15 @@ static ESL_OPTIONS options[] = {
   { "-1", eslARG_REAL,  "0.25", NULL, "0<x<=1.0", NULL, NULL, NULL, "split so no train/test seq pair has > x identity",    1 },
   { "-2", eslARG_REAL,  "0.50", NULL, "0<x<=1.0", NULL, NULL, NULL, "filter test seqs so no pair has > x identity",        1 },
   { "-3", eslARG_REAL,   "1.0", NULL, "0<x<=1.0", NULL, NULL, NULL, "filter training seqs so no pair has > x identity",    1 },
-  { "-N", eslARG_INT, "200000", NULL,     "n>=0", NULL, NULL, NULL, "number of negative test seqs",                        1 },
+  { "-N", eslARG_INT,      "5", NULL,     "n>=0", NULL, NULL, NULL, "number of negative test seqs",                        1 },
   { "-S", eslARG_INT,      "0", NULL,       NULL, NULL, NULL, NULL, "specify RNG seed (0: use a random seed)",             1 },
 
   /* Options defining other characteristics of the benchmark */
   { "--fragthresh", eslARG_REAL,    "0.5", NULL, "0<=x<=1",      NULL, NULL, NULL,  "exclude sequence fragments with aspan/alen < x",            2 },
-  { "--mintrain",   eslARG_INT,      "10", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of training domains required per input MSA", 2 },
-  { "--mintest",    eslARG_INT,       "2", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of test domains required per input MSA",     2 }, 
+  { "--mintrain",   eslARG_INT,       "5", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of training domains required per input MSA", 2 },
+  { "--mintest",    eslARG_INT,       "1", NULL,     "n>0",      NULL, NULL, NULL,  "minimum number of test domains required per input MSA",     2 }, 
   { "--maxtrain",   eslARG_INT,     FALSE, NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of training domains taken per input MSA",    2 },
-  { "--maxtest",    eslARG_INT,     FALSE, NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of test domains taken per input MSA",        2 },
+  { "--maxtest",    eslARG_INT,       "2", NULL,    "n>=0",      NULL, NULL, NULL,  "maximum number of test domains taken per input MSA",        2 },
   { "--double",     eslARG_NONE,    FALSE, NULL,      NULL,      NULL, NULL, NULL,  "embed two, not one domain in each positive",                2 },
 
   /* Options controlling choice of method for splitting into testing and training sets  */
