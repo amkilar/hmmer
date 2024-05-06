@@ -44,7 +44,6 @@ import argparse
 import psutil
 import time
 
-
 # The function returns rss and vms memory in Mb (>> 30 = Gb); without bytes
 def get_memory_info(process):
     memory = process.memory_info()
@@ -124,6 +123,7 @@ if not os.path.isfile('{}.ssi'.format(msafile)): sys.exit("msafile {} needs to h
 tblfp    = open(tblfile)
 outfp    = open(outfile, "w");
 domoutfp = open(domoutfile, "w");
+
 if not tblfp:    sys.exit("failed to open tblfile {} for reading".format(tblfile))
 if not outfp:    sys.exit("failed to open outfile {} for writing".format(outfile))
 if not domoutfp: sys.exit("failed to open domoutfile {} for writing".format(domoutfile))
@@ -132,6 +132,10 @@ if not domoutfp: sys.exit("failed to open domoutfile {} for writing".format(domo
 tbl_rep_file=outfile.replace(".out", ".report")
 outrepfp = open(tbl_rep_file, "w");
 if not outrepfp: sys.exit("failed to open outfile_report {} for writing".format(tbl_rep_file))
+
+tbl_time_opt = outfile.replace(".out", "_time.out")
+outfp_time = open(tbl_time_opt, "w")
+if not outfp_time: sys.exit("failed to open outfile_time {} for writing".format(outfile+"_time"))
 ###
 
 nmsa = 0
@@ -174,7 +178,7 @@ for line in tblfp:
     usage_start = resource.getrusage(resource.RUSAGE_CHILDREN)
 
     # hmmsearch process
-    cmd = '{0} {1} --noali --tblout {2}/{3}.tmp --domtblout {2}/{3}.domtmp {2}/{3}.hmm {4} '.format(ehmmsearch, searchopts, resultdir, msaname, fafile)
+    cmd = '{0} {1} --noali --tblout {2}/{3}.tmp --etblout {2}/{3}_time.tmp --domtblout {2}/{3}.domtmp {2}/{3}.hmm {4} '.format(ehmmsearch, searchopts, resultdir, msaname, fafile)
     
     r = subprocess.Popen(cmd.split(), stdout=f, stderr=subprocess.PIPE, encoding='utf-8')
 
@@ -220,6 +224,22 @@ for line in tblfp:
 
         outfp.write('{0} {1} {2} {3}\n'.format(pval, bitscore, target, msaname))
     resfp.close()
+    
+    
+    resfp = open('{0}/{1}_time.tmp'.format(resultdir, msaname))
+    if not resfp: sys.exit('failed to open ehmmsearch .tblout file {0}/{1}_time.tmp for reading'.format(resultdir, msaname))
+    for line in resfp:
+        if line[0] == '#': continue
+        fields = line.split()
+
+        target   = fields[0]
+        time_opt = fields[4]
+        pval     = fields[5]
+        bitscore = fields[6]
+
+
+        outfp_time.write('{0} {1} {2} {3}\n'.format(pval, bitscore, time_opt, target, msaname))
+    resfp.close()
  
     resfp = open('{0}/{1}.domtmp'.format(resultdir, msaname))
     if not resfp: sys.exit('failed to open ehmmsearch .domtblout file {0}/{1}.domtmp for reading'.format(resultdir, msaname))
@@ -243,10 +263,12 @@ for line in tblfp:
         os.remove('{0}/{1}.sto'.format(resultdir, msaname))
         os.remove('{0}/{1}.tmp'.format(resultdir, msaname))
         os.remove('{0}/{1}.domtmp'.format(resultdir, msaname))
+        os.remove('{0}/{1}_time.tmp'.format(resultdir, msaname))
         #os.remove(outhmm)
 
 tblfp.close()
 outfp.close()
 domoutfp.close()
+outfp_time.close()
 outrepfp.close()
 
