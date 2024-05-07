@@ -237,7 +237,7 @@ for line in tblfp:
         pval     = fields[5]
         bitscore = fields[6]
         
-        outfp_time.write('{0} {1} {2} {3}\n'.format(pval, bitscore, time_opt, target, msaname))
+        outfp_time.write('{0} {1} {2} {3} {4}\n'.format(pval, bitscore, time_opt, target, msaname))
     resfp.close()
  
     resfp = open('{0}/{1}.domtmp'.format(resultdir, msaname))
