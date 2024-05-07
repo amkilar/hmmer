@@ -133,9 +133,9 @@ tbl_rep_file=outfile.replace(".out", ".report")
 outrepfp = open(tbl_rep_file, "w");
 if not outrepfp: sys.exit("failed to open outfile_report {} for writing".format(tbl_rep_file))
 
-tbl_time_opt = outfile.replace(".out", "_time.out")
+tbl_time_opt = outfile.replace(".out", ".time")
 outfp_time = open(tbl_time_opt, "w")
-if not outfp_time: sys.exit("failed to open outfile_time {} for writing".format(outfile+"_time"))
+if not outfp_time: sys.exit("failed to open .time {} for writing".format(tbl_time_opt))
 ###
 
 nmsa = 0
@@ -226,18 +226,17 @@ for line in tblfp:
     resfp.close()
     
     
-    resfp = open('{0}/{1}_time.tmp'.format(resultdir, msaname))
-    if not resfp: sys.exit('failed to open ehmmsearch .tblout file {0}/{1}_time.tmp for reading'.format(resultdir, msaname))
+    resfp = open('{0}/{1}.tmp'.format(resultdir, msaname))
+    if not resfp: sys.exit('failed to open ehmmsearch .tblout file {0}/{1}.tmp for reading'.format(resultdir, msaname))
     for line in resfp:
         if line[0] == '#': continue
         fields = line.split()
-
+        
         target   = fields[0]
         time_opt = fields[4]
         pval     = fields[5]
         bitscore = fields[6]
-
-
+        
         outfp_time.write('{0} {1} {2} {3}\n'.format(pval, bitscore, time_opt, target, msaname))
     resfp.close()
  
@@ -263,7 +262,6 @@ for line in tblfp:
         os.remove('{0}/{1}.sto'.format(resultdir, msaname))
         os.remove('{0}/{1}.tmp'.format(resultdir, msaname))
         os.remove('{0}/{1}.domtmp'.format(resultdir, msaname))
-        os.remove('{0}/{1}_time.tmp'.format(resultdir, msaname))
         #os.remove(outhmm)
 
 tblfp.close()
