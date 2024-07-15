@@ -311,7 +311,7 @@ int p7_EvoPipeline_Mainstage(P7_PIPELINE * pli, float *evparam_star, P7_RATE *R,
   else seqbias = 0.0;
   pre_score =  (fwdsc - nullsc) / eslCONST_LOG2; 
   seq_score =  (fwdsc - (nullsc + seqbias)) / eslCONST_LOG2;
-  //printf("^^ fwd %f null %f seqbias %f\n", fwdsc, nullsc, seqbias);
+  //printf("^^ fwd %f null %f seqbias %f | seq_score %f\n\n", fwdsc, nullsc, seqbias, seq_score);
   
   /* Calculate the "reconstruction score": estimated
    * per-sequence score as sum of individual domains,
@@ -923,8 +923,8 @@ p7_OptimizeForwardParser(ESL_RANDOMNESS *r, ESL_MIN_CFG *cfg, ESL_MIN_DAT *stats
     /* unpack the final parameter vector */
     optimize_unpack_paramvector(p, &data);
     data.fwdsc = func_forwardparser(r, (ESL_DSQ *)dsq, n, hmm, R, gm, om, bg, oxf, data.time, TRUE, evopipe_opt.recalibrate);
-    //printf("^^END FWD OPTIMIZATION: time %f fwdsc %f --> %f\n", data.time, fwdsc_init, data.fwdsc);
-    
+    //printf("\n^^END FWD OPTIMIZATION: time %f fwdsc %f --> %f time %f\n", time_init, fwdsc_init, data.fwdsc, data.time);
+
     if (fwdsc_init > data.fwdsc || data.fwdsc == eslINFINITY) {
       *ret_fwdsc = fwdsc_init;
       *ret_time  = time_init;
