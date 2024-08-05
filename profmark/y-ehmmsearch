@@ -226,8 +226,8 @@ for line in tblfp:
     resfp.close()
     
     
-    resfp = open('{0}/{1}.tmp'.format(resultdir, msaname))
-    if not resfp: sys.exit('failed to open ehmmsearch .tblout file {0}/{1}.tmp for reading'.format(resultdir, msaname))
+    resfp = open('{0}/{1}_time.tmp'.format(resultdir, msaname))
+    if not resfp: sys.exit('failed to open ehmmsearch .tblout file {0}/{1}_time.tmp for reading'.format(resultdir, msaname))
     for line in resfp:
         if line[0] == '#': continue
         fields = line.split()
