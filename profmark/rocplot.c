@@ -764,7 +764,7 @@ domres_add_coverage(int dr_from, int dr_to, int tidx, struct tpos_hom_s *tpos_ho
   int   h, nh;
   int   x;
   
-  if (verbose) printf("resbydom: target %s dom %d-%d len %d\n", target, dr_from, dr_to, dr_to-dr_from+1);
+  if (verbose) printf("resbydom: target %s dom %d-%d len %d idx %d\n", target, dr_from, dr_to, dr_to-dr_from+1, tidx);
 
   for (h = 0; h < nhom; h ++) {
     h_from  = tpos_hom[tidx].h_from[h];
@@ -988,6 +988,8 @@ parse_results_dom(char *resdomfile, ESL_KEYHASH *qkh, ESL_KEYHASH *poskh, struct
 	esl_keyhash_Lookup(poskh, target, tlen, &tidx); 
 	domres_add_coverage(dr_from, dr_to, tidx, tpos_hom, verbose);
       }
+
+      if (tidx < 0) esl_fatal("failed to find target seq %s in positives file", target);
     }
 
   esl_fileparser_Close(efp);

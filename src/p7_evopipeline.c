@@ -330,7 +330,8 @@ int p7_EvoPipeline_Mainstage(P7_PIPELINE * pli, float *evparam_star, P7_RATE *R,
 	    {
 	      sum_score += pli->ddef->dcl[d].envsc;         /* NATS */
 	      Ld        += pli->ddef->dcl[d].jenv  - pli->ddef->dcl[d].ienv + 1;
-	      seqbias   += pli->ddef->dcl[d].domcorrection; /* NATS */  
+	      seqbias   += pli->ddef->dcl[d].domcorrection; /* NATS */
+	      //printf("^^fwd d %d/%d seqbias %f  \n", d, pli->ddef->ndom, seqbias);
 	    }
 	}
       seqbias = p7_FLogsum(0.0, log(bg->omega) + seqbias);  /* NATS */
@@ -347,15 +348,19 @@ int p7_EvoPipeline_Mainstage(P7_PIPELINE * pli, float *evparam_star, P7_RATE *R,
 	}
       seqbias = 0.0;
     }    
+  //printf("^^ fwd new seqbias %f  \n", seqbias);
   sum_score += (sq->n-Ld) * log((float) sq->n / (float) (sq->n+3)); /* NATS */
   pre2_score = (sum_score - nullsc) / eslCONST_LOG2;                /* BITS */
+  //printf("^^ fwd prv sum_sc %f  after %f\n", sum_score, sum_score - (nullsc + seqbias));
   sum_score  = (sum_score - (nullsc + seqbias)) / eslCONST_LOG2;    /* BITS */
+  //printf("^^ fwd seq_score %f sum_score %f seqbias %f nullsc %f\n", seq_score, sum_score, seqbias, nullsc);
 
   /* A special case: let sum_score override the seq_score when it's better, and it includes at least 1 domain */
   if (Ld > 0 && sum_score > seq_score)
     {
       seq_score = sum_score;
       pre_score = pre2_score;
+      //printf("^^ fwd seq_score = sum_score %f\n\n", seq_score);
     }
 
   /* Apply thresholding and determine whether to put this
