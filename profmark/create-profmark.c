@@ -72,6 +72,7 @@ static ESL_OPTIONS options[] = {
   /* name        type  default  env        range  togs  reqs incomp                    help                          docgroup */
   { "-h", eslARG_NONE,   FALSE, NULL,       NULL, NULL, NULL, NULL, "help; show brief info on version and usage",          1 },
   { "-1", eslARG_REAL,  "0.25", NULL, "0<x<=1.0", NULL, NULL, NULL, "split so no train/test seq pair has > x identity",    1 },
+  { "-4", eslARG_REAL,   "0.0", NULL, "0<=x<1.0", NULL, NULL, "--cluster", "split so no train/test seq pair has < x identity",    1 },
   { "-2", eslARG_REAL,  "0.50", NULL, "0<x<=1.0", NULL, NULL, NULL, "filter test seqs so no pair has > x identity",        1 },
   { "-3", eslARG_REAL,   "1.0", NULL, "0<x<=1.0", NULL, NULL, NULL, "filter training seqs so no pair has > x identity",    1 },
   { "-N", eslARG_INT, "200000", NULL,     "n>=0", NULL, NULL, NULL, "number of negative test seqs",                        1 },
@@ -86,7 +87,7 @@ static ESL_OPTIONS options[] = {
   { "--double",     eslARG_NONE,    FALSE, NULL,      NULL,      NULL, NULL, NULL,  "embed two, not one domain in each positive",                2 },
 
   /* Options controlling choice of method for splitting into testing and training sets  */
-  { "--cobalt",     eslARG_NONE,"default", NULL,      NULL,  pmSPLIT_OPTS, NULL, NULL,  "greedy algorithm with random order",                    3 },
+  { "--cobalt",     eslARG_NONE,"default", NULL,      NULL,  pmSPLIT_OPTS, NULL, "-4",  "greedy algorithm with random order",                    3 },
   { "--blue",       eslARG_NONE,    FALSE, NULL,      NULL,  pmSPLIT_OPTS, NULL, NULL,  "multi-round random election process",                   3 },
   { "--cluster",    eslARG_NONE,    FALSE, NULL,      NULL,  pmSPLIT_OPTS, NULL, NULL,  "single linkage clustering",                             3 },
   { "--random",     eslARG_NONE,    FALSE, NULL,      NULL,  pmSPLIT_OPTS, NULL, NULL,  "random selection of training set",                      3 },
@@ -95,6 +96,7 @@ static ESL_OPTIONS options[] = {
   { "--bestof",      eslARG_INT,     NULL, NULL,     "n>0",      NULL, NULL,       "--cluster,--firstof", "output best of n runs of an iset splitting algorithm",     4 },
   { "--firstof",     eslARG_INT,     NULL, NULL,     "n>0",      NULL, NULL,       "--cluster,--bestof",  "output first passing split, try at most n times",          4 },
   { "--rp",          eslARG_REAL,  "0.75", NULL,"0<x<=1.0",      NULL, "--random", NULL,                  "set prob to put seq in training set with --random split",  4 },
+  { "--pid",         eslARG_NONE,   FALSE, NULL,      NULL,      NULL, NULL,       NULL,                  "create optional .pid file, %id's for all train/test domain pairs", 4 },
 
   /* Options controlling choice of method for nonhomologous segment randomization */
   { "--mono",      eslARG_NONE,"default", NULL,       NULL, pmSHUFFLE_OPTS, NULL, NULL,  "shuffle preserving monoresidue composition",                5 },
@@ -138,8 +140,10 @@ typedef struct {
   FILE           *out_test;      // Usually .test.fa (FASTA) with pos/neg seqs; with --onlysplit, .test.msa.  
   FILE           *out_postbl;    // summary table for positive synthetic seqs (NULL if --onlysplit)
   FILE           *out_negtbl;    // summary table for negative synthetic seqs (NULL if --onlysplit)
+  FILE           *out_pid; 	 // table of pairwise %id for all train x test domain pairs 
 
   float           idthresh1;     // fractional id threshold for train/test split        (no train/test pair > this id)  (1.0 = iid random split, typical in machine learning)
+  float           idthresh4;     // fractional id threshold for train/test split        (no train/test pair < this id)  (0.0 = iid random split, typical in machine learning)
   float           idthresh2;     //                     ... for filtering test seqs     (no test pair have > this id)   (1.0 = no filtering)
   float           idthresh3;     //                     ... for filtering training seqs (no train pair have > this fid) (1.0 = no filtering)
   int             tot_negatives; // number of synthetic negative test seqs to make
@@ -226,6 +230,7 @@ destroy_config(PM_CONFIG *cfg)
     if (cfg->out_test)   fclose(cfg->out_test);
     if (cfg->out_postbl) fclose(cfg->out_postbl);
     if (cfg->out_negtbl) fclose(cfg->out_negtbl);
+    if (cfg->out_pid)    fclose(cfg->out_pid);
 
     esl_randomness_Destroy(cfg->rng);
     esl_alphabet_Destroy(cfg->abc);
@@ -252,11 +257,14 @@ create_config(char *argv0, ESL_GETOPTS *go)
   cfg->out_test   = NULL;
   cfg->out_postbl = NULL;
   cfg->out_negtbl = NULL;
+  cfg->out_pid    = NULL;
 
   cfg->idthresh1     = esl_opt_GetReal(go, "-1");
+  cfg->idthresh4     = esl_opt_GetReal(go, "-4");
   cfg->idthresh2     = esl_opt_GetReal(go, "-2");
   cfg->idthresh3     = esl_opt_GetReal(go, "-3");
   cfg->tot_negatives = esl_opt_GetInteger(go, "-N");
+  if (cfg->idthresh4 >= cfg->idthresh1) esl_fatal("no split can happen: idthresh4 is %f >= than idthresh1 %f", cfg->idthresh4, cfg->idthresh1);
 
   if ((cfg->rng = esl_randomness_Create(esl_opt_GetInteger(go, "-S"))) == NULL) goto ERROR;
 
@@ -317,7 +325,7 @@ create_config(char *argv0, ESL_GETOPTS *go)
 }
 
 static void
-open_iofiles(PM_CONFIG *cfg, const char *basename, const char *msafile, const char *dbfile)
+open_iofiles(ESL_GETOPTS *go, PM_CONFIG *cfg, const char *basename, const char *msafile, const char *dbfile)
 {
   int  alifmt = eslMSAFILE_STOCKHOLM;   // currently require msafile to be in Stockholm (it's a multi-MSA file)
   int  dbfmt  = eslSQFILE_FASTA;        // we currently require db to be in FASTA format, and with an SSI index
@@ -377,6 +385,12 @@ open_iofiles(PM_CONFIG *cfg, const char *basename, const char *msafile, const ch
       if (snprintf(outfile, 256, "%s.neg", basename) >= 256)  esl_fatal("Failed to construct output negatives table file name");
       if ((cfg->out_negtbl = fopen(outfile, "w"))    == NULL) esl_fatal("Failed to open output negatives table file %s", outfile);
     }
+
+  if (esl_opt_GetBoolean(go, "--pid")) {
+    if (snprintf(outfile, 256, "%s.pid", basename) >= 256)  esl_fatal("Failed to construct output pid file name");
+    if ((cfg->out_pid = fopen(outfile, "w")) == NULL) esl_fatal("Failed to open %%id pid file %s\n", outfile);
+  } 
+
   return;
 
  ERROR:
@@ -395,6 +409,7 @@ open_iofiles(PM_CONFIG *cfg, const char *basename, const char *msafile, const ch
  */
 typedef struct {
   double         t;   // two seqs are linked if they have >t pairwise identity, as defined by esl_dst_XPairId(): smaller rlen as denominator
+  double         u;   // two seqs are linked if they have <u pairwise identity, as defined by esl_dst_XPairId(): smaller rlen as denominator
   const ESL_MSA *msa;
 } PM_LINK_PARAMS;
 
@@ -402,7 +417,7 @@ typedef struct {
 /* is_linked()
  *
  * This helper function gets passed to the clustering/linking routines, along
- * with the <struct islinked_param_s> packet. Seq pairs with > maxid
+ * with the <struct islinked_param_s> packet. Seq pairs with > maxid or < minid
  * are defined as "linked".
  */
 static int
@@ -415,7 +430,7 @@ is_linked(const void *v1, const void *v2, const void *p, int *ret_link)
   int    status;
 
   if ( (status = esl_dst_XPairId(prm->msa->abc, prm->msa->ax[idx1], prm->msa->ax[idx2], &pid, NULL, NULL)) != eslOK) goto ERROR;
-  *ret_link = (pid > prm->t ? TRUE : FALSE);
+  *ret_link = ( (pid > prm->t || pid < prm->u) ? TRUE : FALSE);
   return eslOK;
 
  ERROR:
@@ -446,7 +461,7 @@ is_linked(const void *v1, const void *v2, const void *p, int *ret_link)
  * might still come out larger (nT can be >nS).
  */
 static int
-split_msa_by_cluster(const ESL_MSA *msa, const int *V, int nV, double t, int *S, int *ret_nS, int *T, int *ret_nT)
+split_msa_by_cluster(const ESL_MSA *msa, const int *V, int nV, double t, double u, int *S, int *ret_nS, int *T, int *ret_nT)
 {
   PM_LINK_PARAMS prm;
   int     *wrk        = NULL;  // esl_cluster_SingleLinkage() requires an allocated tmp workspace of at least 2*nV ints
@@ -463,6 +478,7 @@ split_msa_by_cluster(const ESL_MSA *msa, const int *V, int nV, double t, int *S,
   ESL_ALLOC(assignment,     nV * sizeof(int));
 
   prm.t   = t;
+  prm.u   = u;
   prm.msa = msa;
 
   /* esl_cluster_SingleLinkage() is written generally enough that we
@@ -498,7 +514,7 @@ split_msa_by_cluster(const ESL_MSA *msa, const int *V, int nV, double t, int *S,
  * choose one random sequence.
  */
 static int
-filter_msa_by_cluster(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV, double t, int *S, int *ret_nS)
+filter_msa_by_cluster(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV, double t, double u, int *S, int *ret_nS)
 {
   PM_LINK_PARAMS prm;
   int *wrk        = NULL;
@@ -512,6 +528,7 @@ filter_msa_by_cluster(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int
   ESL_ALLOC(wrk,        2 * nV * sizeof(int));
   ESL_ALLOC(assignment,     nV * sizeof(int));
   prm.t   = t;
+  prm.u   = u;
   prm.msa = msa;
 
   if (( status = esl_cluster_SingleLinkage(V, nV, sizeof(int), is_linked, &prm, wrk, assignment, &nc)) != eslOK) goto ERROR;
@@ -542,7 +559,7 @@ filter_msa_by_cluster(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int
  */
 static int
 split_msa_by_iset(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV,
-                  int which_algo, double t, double S_randp,
+                  int which_algo, double t, double u, double S_randp,
                   int *S, int *ret_nS, int *T, int *ret_nT)
 {
   PM_LINK_PARAMS prm;
@@ -556,6 +573,7 @@ split_msa_by_iset(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV,
   ESL_ALLOC(wrk,        4 * nV * sizeof(int));
   ESL_ALLOC(assignment,     nV * sizeof(int));
   prm.t   = t;
+  prm.u   = u;
   prm.msa = msa;
 
   switch (which_algo) {
@@ -586,7 +604,7 @@ split_msa_by_iset(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV,
  */
 static int
 filter_msa_by_iset(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV,
-                   int which_algo, double t,
+                   int which_algo, double t, double u,
                    int *S, int *ret_nS)
 {
   PM_LINK_PARAMS prm;
@@ -599,6 +617,7 @@ filter_msa_by_iset(ESL_RANDOMNESS *rng, const ESL_MSA *msa, const int *V, int nV
   ESL_ALLOC(wrk,        4 * nV * sizeof(int));
   ESL_ALLOC(assignment,     nV * sizeof(int));
   prm.t   = t;
+  prm.u   = u;
   prm.msa = msa;
 
   switch (which_algo) {
@@ -680,11 +699,11 @@ train_test_by_cluster(const PM_CONFIG *cfg, const ESL_MSA *msa, const int *V, in
   ESL_ALLOC(pre_S, sizeof(int) * nV);
   ESL_ALLOC(pre_T, sizeof(int) * nV);
 
-  if (( status = split_msa_by_cluster (msa, V, nV, cfg->idthresh1, pre_S, &pre_nS, pre_T, &pre_nT)) != eslOK) goto ERROR;
+  if (( status = split_msa_by_cluster (msa, V, nV, cfg->idthresh1, cfg->idthresh4, pre_S, &pre_nS, pre_T, &pre_nT)) != eslOK) goto ERROR;
   if (pre_nS < cfg->min_ntrain || pre_nT < cfg->min_ntest) { status = eslFAIL; goto ERROR; }
 
   if (cfg->idthresh2 < 1.0) {
-    if (( status = filter_msa_by_cluster(cfg->rng, msa, pre_T, pre_nT, cfg->idthresh2, T, &nT)) != eslOK) goto ERROR;
+    if (( status = filter_msa_by_cluster(cfg->rng, msa, pre_T, pre_nT, cfg->idthresh2, 0.0, T, &nT)) != eslOK) goto ERROR;
     if (nT < cfg->min_ntest) { status = eslFAIL; goto ERROR; }
   } else {
     esl_vec_ICopy(pre_T, pre_nT, T);
@@ -692,7 +711,7 @@ train_test_by_cluster(const PM_CONFIG *cfg, const ESL_MSA *msa, const int *V, in
   }
 
   if (cfg->idthresh3 < 1.0) {
-    if (( status = filter_msa_by_cluster(cfg->rng, msa, pre_S, pre_nS, cfg->idthresh3, S, &nS)) != eslOK) goto ERROR;
+    if (( status = filter_msa_by_cluster(cfg->rng, msa, pre_S, pre_nS, cfg->idthresh3, 0.0, S, &nS)) != eslOK) goto ERROR;
     if (nS < cfg->min_ntrain) { status = eslFAIL; goto ERROR; }
   } else {
     esl_vec_ICopy(pre_S, pre_nS, S);
@@ -738,11 +757,11 @@ train_test_by_iset(PM_CONFIG *cfg, const ESL_MSA *msa, const int *V, int nV,
   while (trial < cfg->ntries)
     {
       trial++;
-      if (( status = split_msa_by_iset (cfg->rng, msa, V, nV, cfg->which_algo, cfg->idthresh1, cfg->S_randp, pre_S, &pre_nS, pre_T, &pre_nT)) != eslOK) goto ERROR;
+      if (( status = split_msa_by_iset (cfg->rng, msa, V, nV, cfg->which_algo, cfg->idthresh1, cfg->idthresh4, cfg->S_randp, pre_S, &pre_nS, pre_T, &pre_nT)) != eslOK) goto ERROR;
       if (pre_nS < cfg->min_ntrain || pre_nT < cfg->min_ntest) continue;
 
       if (cfg->idthresh2 < 1.0) {
-        if (( status = filter_msa_by_iset(cfg->rng, msa, pre_T, pre_nT, cfg->which_algo, cfg->idthresh2, try_T, &try_nT)) != eslOK) goto ERROR;
+        if (( status = filter_msa_by_iset(cfg->rng, msa, pre_T, pre_nT, cfg->which_algo, cfg->idthresh2, 0.0, try_T, &try_nT)) != eslOK) goto ERROR;
         if (try_nT < cfg->min_ntest) continue;
       } else {
         esl_vec_ICopy(pre_T, pre_nT, try_T);
@@ -750,7 +769,7 @@ train_test_by_iset(PM_CONFIG *cfg, const ESL_MSA *msa, const int *V, int nV,
       }
 
       if (cfg->idthresh3 < 1.0) {
-        if (( status = filter_msa_by_iset(cfg->rng, msa, pre_S, pre_nS, cfg->which_algo, cfg->idthresh3, try_S, &try_nS))  != eslOK) goto ERROR;
+        if (( status = filter_msa_by_iset(cfg->rng, msa, pre_S, pre_nS, cfg->which_algo, cfg->idthresh3, 0.0, try_S, &try_nS))  != eslOK) goto ERROR;
         if (try_nS < cfg->min_ntrain) continue;
       } else {
         esl_vec_ICopy(pre_S, pre_nS, try_S);
@@ -1193,7 +1212,7 @@ validate_split(PM_CONFIG *cfg, const ESL_MSA *msa, const int *S, int nS, const i
           esl_fatal("training/test sets for %s not disjoint: %d in both (%s)", msa->name, S[i], msa->sqname[S[i]]);
 
         esl_dst_XPairId(cfg->abc, msa->ax[S[i]], msa->ax[T[j]], &pid, /*opt_nid=*/NULL, /*opt_n=*/NULL); // deliberately not using is_linked(), to doublecheck
-        if (pid > cfg->idthresh1)
+        if (pid > cfg->idthresh1 || pid < cfg.idthresh4) 
           esl_fatal("training/test set for %s have a pair at %.3f identity: %d and %d (%s and %s)",
                     msa->name, pid, S[i], T[j], msa->sqname[S[i]], msa->sqname[T[j]]);
       }
@@ -1259,6 +1278,99 @@ write_msa_subset(FILE *ofp, const ESL_MSA *msa, const int *S, int nS)
   esl_msa_Destroy(submsa);
 }
 
+static void
+write_pids(FILE *ofp, const ESL_MSA *msa, const int *S1, int nS1,  const int *S2, int nS2)
+{
+  double  pid;
+  int    *useme1  = malloc(sizeof(int) * msa->nseq);
+  int    *useme2  = malloc(sizeof(int) * msa->nseq);
+  int     i, j;
+
+  if (ofp == NULL) return;
+  
+  if (useme1 == NULL) esl_fatal("allocation failed");
+  if (useme2 == NULL) esl_fatal("allocation failed");
+  esl_vec_ISet(useme1, msa->nseq, FALSE);
+  esl_vec_ISet(useme2, msa->nseq, FALSE);
+  for (i = 0; i < nS1; i++) useme1[S1[i]] = TRUE;
+  for (i = 0; i < nS2; i++) useme2[S2[i]] = TRUE;
+
+  for (i = 0; i < msa->nseq; i++) {
+    if (useme1[i]) 
+      for (j = 0; j < msa->nseq; j++) 
+	if (useme2[j])
+	  {
+	    esl_dst_XPairId(msa->abc, msa->ax[i], msa->ax[j], &pid, NULL, NULL);
+	    fprintf(ofp, "%-20s %-24s %-24s %4.1f\n", msa->name, msa->sqname[i], msa->sqname[j], pid*100.0);
+	  }	
+  }
+}
+
+
+int
+er_esl_dst_XAvgSubsetConnectivity(const ESL_ALPHABET *abc, ESL_DSQ **ax, int N, int *V, int nV, int max_comparisons, double idthresh_u, double idthresh_d, double *opt_avgid, double *opt_avgconn)
+{
+  ESL_RANDOMNESS *rng = NULL;
+  double avgid   = 0.;
+  double avgconn = 0.;
+  double id;
+  int    i,j,k;
+  int    status;
+
+  ESL_DASSERT1(( nV <= N ));    // indices in V[0..nV-1] are a subset of 0..N-1
+
+  if (nV <= 1)                                   // Edge case: a single sequence by itself has no pairwise comparisons
+    {                                            // Set a convention of id = 1.0 and conn = 1.0 for the case of no pairwise comparisons
+      avgid = avgconn = 1.;                 
+    }
+  else if (nV <= max_comparisons &&               // Is nV small enough that we can average over all pairwise comparisons? 
+           nV <= sqrt(2. * max_comparisons) &&    // Watch out for numerical overflow in this: for large MSAs, nV(nV-1)/2 can overflow.
+           (nV * (nV-1) / 2) <= max_comparisons)
+    {
+      for (i = 0; i < nV; i++)
+        for (j = i+1; j < nV; j++)
+          {
+            ESL_DASSERT1(( V[i] >= 0 && V[i] <= N && V[j] >= 0 && V[j] <= N ));
+            if ((status = esl_dst_XPairId(abc, ax[V[i]], ax[V[j]], &id, NULL, NULL)) != eslOK) goto ERROR;
+            if (id > idthresh_u || id < idthresh_d) avgconn += 1.;
+            avgid += id;
+          }
+      avgid   /= (double) (nV * (nV-1) / 2);
+      avgconn /= (double) (nV * (nV-1) / 2);
+    }
+  else // for large nV, calculate averages over a reproducible stochastic sample.
+    {
+      if (( rng = esl_randomness_Create(42) ) == NULL) { status = eslEMEM; goto ERROR; } // fixed seed, suppress stochastic variation 
+
+      for (k = 0; k < max_comparisons; k++)
+        {
+          do {
+            i = esl_rnd_Roll(rng, nV);
+            j = esl_rnd_Roll(rng, nV);
+          } while (j == i); /* make sure j != i */
+   
+          ESL_DASSERT1(( V[i] >= 0 && V[i] <= N && V[j] >= 0 && V[j] <= N ));
+          if ((status = esl_dst_XPairId(abc, ax[V[i]], ax[V[j]], &id, NULL, NULL)) != eslOK) goto ERROR;
+          if (id > idthresh_u || id < idthresh_d) avgconn += 1.;
+          avgid += id;
+        }
+      avgid   /= (double) max_comparisons;
+      avgconn /= (double) max_comparisons;
+    }
+
+  if (rng)          esl_randomness_Destroy(rng);
+  if (opt_avgid)   *opt_avgid   = avgid;
+  if (opt_avgconn) *opt_avgconn = avgconn;
+  return eslOK;
+
+ ERROR:
+  if (rng)          esl_randomness_Destroy(rng);
+  if (opt_avgid)   *opt_avgid   = 0.;
+  if (opt_avgconn) *opt_avgconn = 0.;
+  return status;
+}
+
+
 /* process_msa()
  * 
  * <msa> may be modified here: non-IUPAC residue symbols are converted in-place to X.
@@ -1291,8 +1403,8 @@ process_msa(PM_CONFIG *cfg, ESL_MSA *msa, int *tot_npos)
    * skip it and leave avgid/avgconn as 0.0 in the .tbl file.
    */
   if (!cfg->do_speedtest && nV > 1) 
-    esl_dst_XAvgSubsetConnectivity(msa->abc, msa->ax, msa->nseq, V, nV,
-                                   cfg->max_comparisons, cfg->idthresh1, &avgid, &avgconn);
+    er_esl_dst_XAvgSubsetConnectivity(msa->abc, msa->ax, msa->nseq, V, nV,
+				      cfg->max_comparisons, cfg->idthresh1, cfg->idthresh4, &avgid, &avgconn);
 
   if (cfg->which_algo == pmCLUSTER) status = train_test_by_cluster(cfg, msa, V, nV, S, &nS, T, &nT);
   else                              status = train_test_by_iset   (cfg, msa, V, nV, S, &nS, T, &nT, &ntries);
@@ -1327,6 +1439,9 @@ process_msa(PM_CONFIG *cfg, ESL_MSA *msa, int *tot_npos)
           msa->name, msa->nseq, msa->alen, msa->nseq-nV, 100.*avgid, 100.*avgconn, ntries,
           (split_success ? "ok" : "FAIL"), nS, nT, *tot_npos - prv_npos);
 
+  // write pids if requested
+  write_pids(cfg->out_pid, msa, S, nS, T, nT);
+     
   free(V); free(S); free(T);
   return;
 
@@ -1334,8 +1449,6 @@ process_msa(PM_CONFIG *cfg, ESL_MSA *msa, int *tot_npos)
   esl_fatal("allocation failed");
 }
   
-
-
 
 int
 main(int argc, char **argv)
@@ -1362,7 +1475,7 @@ main(int argc, char **argv)
   basename = esl_opt_GetArg(go, 1);
   msafile  = esl_opt_GetArg(go, 2);
   if (! cfg->do_onlysplit) dbfile = esl_opt_GetArg(go, 3);
-  open_iofiles(cfg, basename, msafile, dbfile);
+  open_iofiles(go, cfg, basename, msafile, dbfile);
   esl_getopts_Destroy(go);
 
   while (( status = esl_msafile_Read(cfg->afp, &msa)) == eslOK)

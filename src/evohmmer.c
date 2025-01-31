@@ -917,7 +917,6 @@ p7_EvolveFromRate(FILE *statfp, P7_HMM *hmm, const P7_RATE *R, const P7_BG *bg, 
     itI = (tI > 0.)? 1./tI : 0.0;
     hmm->t[m][p7H_IM] *= itI;
     hmm->t[m][p7H_II] *= itI;
-
  
 #if 0
     if (1||verbose) {
@@ -1119,7 +1118,7 @@ p7_CalculatePinfy(P7_RATE *R, const P7_HMM *hmm, const P7_BG *bg, char *errbuf, 
     }
 
 #if 0
-    if (verbose) {
+    if (1||verbose) {
       for (m = 1; m <= R->M; m ++) {   
 	printf("\nm %d\n", m);
 	esl_vec_FDump(stdout, hmm->mat[m], R->abc_r->K, NULL);
